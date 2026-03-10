@@ -1,149 +1,126 @@
 import streamlit as st
 import urllib.parse
 import time
+import plotly.express as px
+import pandas as pd
 from datetime import datetime
+from fpdf import FPDF
+import io
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SupSmart Pro", page_icon="logo.png", layout="centered")
 
-# Inicialização de memória (Carrinho e Histórico)
-if 'pagina' not in st.session_state:
-    st.session_state.pagina = 'home'
-if 'carrinho' not in st.session_state:
-    st.session_state.carrinho = []
-if 'historico' not in st.session_state:
-    st.session_state.historico = []
+if 'pagina' not in st.session_state: st.session_state.pagina = 'home'
+if 'carrinho' not in st.session_state: st.session_state.carrinho = []
+if 'historico' not in st.session_state: st.session_state.historico = []
 
 def mudar_pagina(nome):
     st.session_state.pagina = nome
     st.rerun()
+
+# --- FUNÇÃO PARA GERAR PDF ---
+def gerar_pdf(carrinho, total, orcamento, df_agrupado):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Cabeçalho
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(190, 10, "SupSmart Pro - Relatório de Compra", ln=True, align="C")
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(190, 10, f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.ln(10)
+
+    # Resumo Financeiro
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(190, 10, f"Total da Compra: R$ {total:.2f}", ln=True)
+    pdf.cell(190, 10, f"Orçamento Estipulado: R$ {orcamento:.2f}", ln=True)
+    pdf.ln(5)
+
+    # Lista de Itens
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(90, 10, "Produto", 1)
+    pdf.cell(50, 10, "Segmento", 1)
+    pdf.cell(50, 10, "Valor", 1, ln=True)
+    
+    pdf.set_font("Arial", "", 10)
+    for item in carrinho:
+        pdf.cell(90, 10, item['nome'], 1)
+        pdf.cell(50, 10, item['segmento'], 1)
+        pdf.cell(50, 10, f"R$ {item['valor']:.2f}", 1, ln=True)
+    
+    pdf.ln(10)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(190, 10, "Análise de Gastos por Segmento:", ln=True)
+    
+    # Adicionando os dados do gráfico em formato de texto no PDF
+    for index, row in df_agrupado.iterrows():
+        percentual = (row['valor'] / total) * 100
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(190, 8, f"- {row['segmento']}: R$ {row['valor']:.2f} ({percentual:.1f}%)", ln=True)
+
+    return pdf.output(dest='S').encode('latin-1', 'replace')
 
 # --- 2. ESTILO CSS ---
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 10px; height: 3.5em; background-color: #7B1FA2; color: white; font-weight: bold; }
     .item-card { background-color: white; padding: 12px; border-radius: 10px; border-left: 6px solid #7B1FA2; margin-bottom: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); color: black; }
-    .hist-card { background-color: #f0f2f6; padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 4px solid #4A148C; font-size: 14px; color: black; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR: GAVETA DE HISTÓRICO ---
-with st.sidebar:
-    st.title("📂 Memória")
-    if st.button("⬅️ Voltar ao Início"): mudar_pagina('home')
+# --- TELA CALCULADORA ---
+if st.session_state.pagina == 'calculadora':
+    st.title("🛒 SupSmart Pro - Inteligente")
     
-    st.write("---")
-    st.subheader("📜 Compras Passadas")
-    if st.session_state.historico:
-        for comp in reversed(st.session_state.historico):
-            with st.expander(f"📅 {comp['data']}"):
-                st.write(f"**Total: R$ {comp['total']:.2f}**")
-                for it in comp['itens']:
-                    st.markdown(f"<div class='hist-card'>{it}</div>", unsafe_allow_html=True)
-        if st.button("🗑️ Limpar Histórico"):
-            st.session_state.historico = []
-            st.rerun()
-    else:
-        st.info("Nenhuma compra salva ainda.")
-
-# --- TELA 1: HOME ---
-if st.session_state.pagina == 'home':
-    st.image("banner.png", use_container_width=True)
-    st.markdown("<h1 style='text-align:center; color:#4A148C;'>SupSmart Pro</h1>", unsafe_allow_html=True)
-    st.write("---")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("🚀 MODO VISITANTE"): mudar_pagina('calculadora')
-    with c2:
-        if st.button("🌐 CONECTAR GOOGLE"): st.toast("Em breve: Nuvem!")
-    st.caption("<p style='text-align:center;'>Versão 4.0 Pro | Douglas Dev</p>", unsafe_allow_html=True)
-
-# --- TELA 2: CALCULADORA ---
-elif st.session_state.pagina == 'calculadora':
-    st.title("🛒 Lista de Precisão")
-    
-    # 🎯 CONFIGURAÇÃO DE ORÇAMENTO
-    with st.expander("🎯 DEFINIR META DE GASTO", expanded=True):
-        orcamento = st.number_input("Qual o limite de hoje? (R$)", min_value=1.0, value=100.0, step=10.0)
-
-    # 📦 FORMULÁRIO DE ENTRADA
-    with st.form("add_item", clear_on_submit=True):
-        produto = st.text_input("📦 Nome do Produto")
-        col1, col2 = st.columns(2)
-        with col1: qtd_txt = st.text_input("Qtd/Peso", value="1")
-        with col2: prc_txt = st.text_input("Preço Unitário", placeholder="0,00")
-        enviar = st.form_submit_button("➕ ADICIONAR")
-
-    if enviar:
-        try:
-            q = float(qtd_txt.replace(',', '.'))
-            p = float(prc_txt.replace(',', '.'))
-            st.session_state.carrinho.append({
-                "nome": produto if produto else "Item", 
-                "valor": q * p, 
-                "detalhe": f"{q}x R$ {p:.2f}"
-            })
-            st.rerun()
-        except: st.error("⚠️ Use apenas números e vírgula.")
-
-    # 📊 CÁLCULOS E SEMÁFORO
-    total = sum(item['valor'] for item in st.session_state.carrinho)
-    progresso = min(total / orcamento, 1.0) if orcamento > 0 else 0
-    
-    if progresso < 0.7: cor, msg = "#2E7D32", "✅ DENTRO DA META"
-    elif progresso < 1.0: cor, msg = "#FBC02D", "⚠️ ATENÇÃO: QUASE LÁ"
-    else: cor, msg = "#D32F2F", "🚨 LIMITE ULTRAPASSADO!"
-
-    # 🎨 PAINEL DE STATUS
-    st.markdown(f"""
-        <div style="background-color: {cor}; padding: 20px; border-radius: 15px; text-align: center; color: white; margin-top: 10px;">
-            <p style="margin:0; font-weight:bold;">{msg}</p>
-            <h1 style="margin:0;">R$ {total:.2f}</h1>
-            <p style="margin:0; opacity: 0.8;">Meta: R$ {orcamento:.2f}</p>
-        </div>
-    """, unsafe_allow_html=True)
-    st.progress(progresso)
-
-    # 📝 LISTA DE ITENS E FERRAMENTAS
-    if st.session_state.carrinho:
-        st.write("### 📝 Itens na Lista:")
-        for i in st.session_state.carrinho:
-            st.markdown(f"""
-                <div class="item-card">
-                    <strong>{i['nome']}</strong><br>
-                    {i['detalhe']} = <strong>R$ {i['valor']:.2f}</strong>
-                </div>
-            """, unsafe_allow_html=True)
-
+    with st.sidebar:
+        if st.button("⬅️ Início"): mudar_pagina('home')
         st.write("---")
+        st.subheader("📜 Histórico")
+        for h in reversed(st.session_state.historico): st.caption(f"{h['data']} - R$ {h['total']:.2f}")
+
+    orcamento = st.sidebar.number_input("Meta de Gasto (R$)", min_value=1.0, value=100.0)
+
+    with st.form("add_item", clear_on_submit=True):
+        col1, col2 = st.columns([2, 1])
+        with col1: produto = st.text_input("📦 Item")
+        with col2: segmento = st.selectbox("🏷️ Segmento", ["Matinais", "Bebidas", "Açougue", "Limpeza", "Higiene", "Hortifruti", "Outros"])
+        c1, c2 = st.columns(2)
+        with c1: q_t = st.text_input("Qtd", "1")
+        with c2: p_t = st.text_input("Preço", "0.00")
+        if st.form_submit_button("➕ ADICIONAR"):
+            try:
+                val = float(q_t.replace(',','.')) * float(p_t.replace(',','.'))
+                st.session_state.carrinho.append({"nome": produto, "valor": val, "segmento": segmento})
+                st.rerun()
+            except: st.error("Erro nos valores")
+
+    total = sum(i['valor'] for i in st.session_state.carrinho)
+    st.metric("Total Atual", f"R$ {total:.2f}", delta=f"{total-orcamento:.2f}" if total > orcamento else None, delta_color="inverse")
+
+    if st.session_state.carrinho:
+        df = pd.DataFrame(st.session_state.carrinho)
+        df_agrupado = df.groupby("segmento")["valor"].sum().reset_index()
         
-        # WHATSAPP
-        resumo = f"🛒 *Resumo SupSmart Pro*\n\n"
-        for i in st.session_state.carrinho:
-            resumo += f"• {i['nome']}: R$ {i['valor']:.2f}\n"
-        resumo += f"\n💰 *TOTAL: R$ {total:.2f}*"
+        # Gráfico de Pizza
+        fig = px.pie(df_agrupado, values='valor', names='segmento', hole=.4, title="Distribuição de Gastos")
+        st.plotly_chart(fig, use_container_width=True)
         
-        link_wa = f"https://wa.me/?text={urllib.parse.quote(resumo)}"
-        st.markdown(f"""<a href="{link_wa}" target="_blank" style="text-decoration:none;"><div style="background-color:#25D366; color:white; padding:15px; border-radius:10px; text-align:center; font-weight:bold; margin-bottom:10px;">ENVIAR LISTA ✅</div></a>""", unsafe_allow_html=True)
+        # Gerar o PDF
+        pdf_bytes = gerar_pdf(st.session_state.carrinho, total, orcamento, df_agrupado)
         
-        # 🏁 FINALIZAR COMPRA (COM SALVAMENTO NO HISTÓRICO)
+        st.download_button(
+            label="📄 BAIXAR RELATÓRIO PDF",
+            data=pdf_bytes,
+            file_name=f"compra_{datetime.now().strftime('%d_%m_%Y')}.pdf",
+            mime="application/pdf"
+        )
+
         if st.button("🏁 FINALIZAR COMPRA"):
-            # Salva no histórico antes de limpar
-            nova_compra = {
-                "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "total": total,
-                "itens": [f"{it['nome']} - R$ {it['valor']:.2f}" for it in st.session_state.carrinho]
-            }
-            st.session_state.historico.append(nova_compra)
-            
+            st.session_state.historico.append({"data": datetime.now().strftime("%d/%m/%Y"), "total": total})
+            st.session_state.carrinho = []
             st.balloons()
-            st.success(f"Excelente! Compra salva no histórico: R$ {total:.2f}")
             time.sleep(2)
-            st.session_state.carrinho = []
             st.rerun()
-            
-        if st.sidebar.button("🗑️ Limpar Carrinho Atual"):
-            st.session_state.carrinho = []
-            st.rerun()
-    else:
-        st.info("Carrinho vazio. Comece a adicionar itens!")
+else:
+    st.image("banner.png", use_container_width=True)
+    if st.button("🚀 INICIAR"): mudar_pagina('calculadora')
