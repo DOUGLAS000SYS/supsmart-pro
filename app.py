@@ -1,80 +1,81 @@
 import streamlit as st
 import urllib.parse
+import time
 
-# --- CONFIGURAÇÃO ---
+# --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SupSmart Pro", page_icon="logo.png", layout="centered")
 
-if 'pagina' not in st.session_state: st.session_state.pagina = 'home'
-if 'carrinho' not in st.session_state: st.session_state.carrinho = []
+# Inicialização de memória do app
+if 'pagina' not in st.session_state:
+    st.session_state.pagina = 'home'
+if 'carrinho' not in st.session_state:
+    st.session_state.carrinho = []
 
-def mudar_pagina(n): 
-    st.session_state.pagina = n
+def mudar_pagina(nome):
+    st.session_state.pagina = nome
     st.rerun()
 
-# Estilo dos Cards
-st.markdown("<style>.stButton>button { width: 100%; border-radius: 10px; background-color: #7B1FA2; color: white; font-weight: bold; } .item-card { background-color: white; padding: 12px; border-radius: 10px; border-left: 6px solid #7B1FA2; margin-bottom: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); color: black; }</style>", unsafe_allow_html=True)
+# --- 2. ESTILO CSS (O DESIGN LISO) ---
+st.markdown("""
+    <style>
+    .stButton>button { width: 100%; border-radius: 10px; height: 3.5em; background-color: #7B1FA2; color: white; font-weight: bold; }
+    .item-card { background-color: white; padding: 12px; border-radius: 10px; border-left: 6px solid #7B1FA2; margin-bottom: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); color: black; }
+    .finalizar-btn>div>button { background-color: #2E7D32 !important; border: none; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- HOME ---
+# --- TELA 1: HOME ---
 if st.session_state.pagina == 'home':
     st.image("banner.png", use_container_width=True)
     st.markdown("<h1 style='text-align:center; color:#4A148C;'>SupSmart Pro</h1>", unsafe_allow_html=True)
+    st.write("---")
     c1, c2 = st.columns(2)
-    with c1: 
+    with c1:
         if st.button("🚀 MODO VISITANTE"): mudar_pagina('calculadora')
-    with c2: 
-        if st.button("🌐 CONECTAR GOOGLE"): st.toast("Em breve!")
+    with c2:
+        if st.button("🌐 CONECTAR GOOGLE"): st.toast("Em breve: Nuvem!")
+    st.caption("<p style='text-align:center;'>Desenvolvido por Douglas | Versão 3.0 Elite</p>", unsafe_allow_html=True)
 
-# --- CALCULADORA ---
+# --- TELA 2: CALCULADORA (O MONSTRO) ---
 elif st.session_state.pagina == 'calculadora':
-    if st.sidebar.button("⬅️ Sair"): mudar_pagina('home')
+    if st.sidebar.button("⬅️ Sair do App"): mudar_pagina('home')
+    
     st.title("🛒 Lista de Precisão")
     
-    # META DE GASTO
+    # DEFINIR META DE GASTO
     with st.expander("🎯 CONFIGURAR ORÇAMENTO", expanded=True):
-        orcamento = st.number_input("Quanto pretende gastar? (R$)", min_value=1.0, value=100.0)
+        orcamento = st.number_input("Qual o seu limite hoje? (R$)", min_value=1.0, value=100.0, step=10.0)
 
-    # FORMULÁRIO
-    with st.form("add", clear_on_submit=True):
-        prod = st.text_input("📦 Produto")
-        c1, c2 = st.columns(2)
-        with c1: q_t = st.text_input("Qtd", value="1")
-        with c2: p_t = st.text_input("Preço", placeholder="0,00")
-        if st.form_submit_button("➕ ADICIONAR"):
-            try:
-                q, p = float(q_t.replace(',','.')), float(p_t.replace(',','.'))
-                st.session_state.carrinho.append({"n": prod if prod else "Item", "v": q*p, "d": f"{q}x R${p:.2f}"})
-                st.rerun()
-            except: st.error("Erro nos números!")
+    # FORMULÁRIO DE ENTRADA
+    with st.form("add_item", clear_on_submit=True):
+        produto = st.text_input("📦 Nome do Produto (Ex: Arroz)")
+        col1, col2 = st.columns(2)
+        with col1: qtd_txt = st.text_input("Qtd/Peso", value="1")
+        with col2: prc_txt = st.text_input("Preço Unitário", placeholder="0,00")
+        enviar = st.form_submit_button("➕ ADICIONAR AO CARRINHO")
 
-    # LÓGICA DO SEMÁFORO
-    total = sum(i['v'] for i in st.session_state.carrinho)
-    prog = min(total/orcamento, 1.0) if orcamento > 0 else 0
-    
-    if prog < 0.7: cor, msg = "#2E7D32", "✅ DENTRO DA META"
-    elif prog < 1.0: cor, msg = "#FBC02D", "⚠️ QUASE NO LIMITE"
-    else: cor, msg = "#D32F2F", "🚨 LIMITE ULTRAPASSADO!"
-
-    # PAINEL DE STATUS
-    st.markdown(f"""
-        <div style='background-color:{cor}; padding:20px; border-radius:15px; text-align:center; color:white;'>
-            <p style='margin:0;'>{msg}</p>
-            <h1 style='margin:0;'>R$ {total:.2f}</h1>
-            <small>Sua meta: R$ {orcamento:.2f}</small>
-        </div>
-    """, unsafe_allow_html=True)
-    st.progress(prog)
-
-    # LISTA DE ITENS
-    if st.session_state.carrinho:
-        st.write("### 📝 Itens na Lista")
-        for i in st.session_state.carrinho:
-            st.markdown(f"<div class='item-card'><b>{i['n']}</b><br>{i['d']} = <b>R$ {i['v']:.2f}</b></div>", unsafe_allow_html=True)
-        
-        # WHATSAPP
-        texto = f"🛒 *Resumo SupSmart Pro*\nTotal: R$ {total:.2f}\nMeta: R$ {orcamento:.2f}"
-        link = f"https://wa.me/?text={urllib.parse.quote(texto)}"
-        st.markdown(f"<a href='{link}' target='_blank' style='text-decoration:none;'><div style='background-color:#25D366; color:white; padding:15px; border-radius:10px; text-align:center; font-weight:bold;'>ENVIAR WHATSAPP ✅</div></a>", unsafe_allow_html=True)
-        
-        if st.sidebar.button("🗑️ Limpar Lista"):
-            st.session_state.carrinho = []
+    if enviar:
+        try:
+            q = float(qtd_txt.replace(',', '.'))
+            p = float(prc_txt.replace(',', '.'))
+            st.session_state.carrinho.append({
+                "nome": produto if produto else "Item", 
+                "valor": q * p, 
+                "detalhe": f"{q}x R$ {p:.2f}"
+            })
             st.rerun()
+        except: st.error("⚠️ Por favor, use apenas números e vírgula.")
+
+    # CÁLCULOS E SEMÁFORO DE CORES
+    total = sum(item['valor'] for item in st.session_state.carrinho)
+    progresso = min(total / orcamento, 1.0) if orcamento > 0 else 0
+    
+    if progresso < 0.7: 
+        cor, msg = "#2E7D32", "✅ DENTRO DA META"
+    elif progresso < 1.0: 
+        cor, msg = "#FBC02D", "⚠️ ATENÇÃO: QUASE LÁ"
+    else: 
+        cor, msg = "#D32F2F", "🚨 LIMITE ULTRAPASSADO!"
+
+    # PAINEL DE STATUS DINÂMICO
+    st.markdown(f"""
