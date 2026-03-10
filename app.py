@@ -99,4 +99,23 @@ elif st.session_state.pagina == 'calculadora':
         # WHATSAPP
         resumo = f"🛒 *Resumo SupSmart Pro*\n\n"
         for i in st.session_state.carrinho:
-            resumo += f"
+            resumo += f"• {i['nome']}: R$ {i['valor']:.2f}\n"
+        resumo += f"\n💰 *TOTAL: R$ {total:.2f}*"
+        
+        link_wa = f"https://wa.me/?text={urllib.parse.quote(resumo)}"
+        st.markdown(f"""<a href="{link_wa}" target="_blank" style="text-decoration:none;"><div style="background-color:#25D366; color:white; padding:15px; border-radius:10px; text-align:center; font-weight:bold; margin-bottom:10px;">ENVIAR LISTA ✅</div></a>""", unsafe_allow_html=True)
+        
+        # 🏁 FINALIZAR COMPRA
+        if st.button("🏁 FINALIZAR COMPRA"):
+            st.balloons()
+            st.success(f"Excelente! Compra finalizada: R$ {total:.2f}")
+            time.sleep(2)
+            st.session_state.carrinho = []
+            st.rerun()
+            
+        if st.sidebar.button("🗑️ Limpar Lista"):
+            st.session_state.carrinho = []
+            st.rerun()
+    else:
+        # ESTA É A LINHA QUE ESTAVA DANDO ERRO (PRECISA ESTAR ALINHADA COM O IF ACIMA)
+        st.info("Carrinho vazio. Comece a adicionar itens!")
