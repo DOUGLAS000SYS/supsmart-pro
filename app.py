@@ -1,89 +1,80 @@
 import streamlit as st
 import urllib.parse
 
-# --- 1. CONFIGURAÇÃO DA PÁGINA ---
+# --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="SupSmart Pro", page_icon="logo.png", layout="centered")
 
-# --- 2. MEMÓRIA ---
-if 'pagina' not in st.session_state:
-    st.session_state.pagina = 'home'
-if 'carrinho' not in st.session_state:
-    st.session_state.carrinho = []
+if 'pagina' not in st.session_state: st.session_state.pagina = 'home'
+if 'carrinho' not in st.session_state: st.session_state.carrinho = []
 
-def mudar_pagina(nome):
-    st.session_state.pagina = nome
+def mudar_pagina(n): 
+    st.session_state.pagina = n
     st.rerun()
 
-# --- 3. ESTILO ---
-st.markdown("""
-    <style>
-    .stButton>button { width: 100%; border-radius: 10px; height: 3.5em; background-color: #7B1FA2; color: white; font-weight: bold; }
-    .metric-container { background-color: #f3e5f5; padding: 15px; border-radius: 15px; text-align: center; border: 1px solid #7B1FA2; margin-top: 10px; }
-    </style>
-    """, unsafe_allow_html=True)
+# Estilo dos Cards
+st.markdown("<style>.stButton>button { width: 100%; border-radius: 10px; background-color: #7B1FA2; color: white; font-weight: bold; } .item-card { background-color: white; padding: 12px; border-radius: 10px; border-left: 6px solid #7B1FA2; margin-bottom: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); color: black; }</style>", unsafe_allow_html=True)
 
-# --- TELA 1: HOME ---
+# --- HOME ---
 if st.session_state.pagina == 'home':
     st.image("banner.png", use_container_width=True)
     st.markdown("<h1 style='text-align:center; color:#4A148C;'>SupSmart Pro</h1>", unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🚀 MODO VISITANTE"):
-            mudar_pagina('calculadora')
-    with col2:
-        if st.button("🌐 CONECTAR GOOGLE"):
-            st.toast("Em breve!")
+    c1, c2 = st.columns(2)
+    with c1: 
+        if st.button("🚀 MODO VISITANTE"): mudar_pagina('calculadora')
+    with c2: 
+        if st.button("🌐 CONECTAR GOOGLE"): st.toast("Em breve!")
 
-# --- TELA 2: CALCULADORA (REPARE QUE ESTÁ NO MESMO NÍVEL DO IF ACIMA) ---
+# --- CALCULADORA ---
 elif st.session_state.pagina == 'calculadora':
-    if st.sidebar.button("⬅️ Sair"):
-        mudar_pagina('home')
-
+    if st.sidebar.button("⬅️ Sair"): mudar_pagina('home')
     st.title("🛒 Lista de Precisão")
     
-    with st.form("meu_formulario", clear_on_submit=True):
-        produto = st.text_input("📦 Produto")
+    # META DE GASTO
+    with st.expander("🎯 CONFIGURAR ORÇAMENTO", expanded=True):
+        orcamento = st.number_input("Quanto pretende gastar? (R$)", min_value=1.0, value=100.0)
+
+    # FORMULÁRIO
+    with st.form("add", clear_on_submit=True):
+        prod = st.text_input("📦 Produto")
         c1, c2 = st.columns(2)
-        with c1:
-            qtd_txt = st.text_input("Qtd", value="1")
-        with c2:
-            prc_txt = st.text_input("Preço", placeholder="0,00")
-        enviar = st.form_submit_button("➕ ADICIONAR")
+        with c1: q_t = st.text_input("Qtd", value="1")
+        with c2: p_t = st.text_input("Preço", placeholder="0,00")
+        if st.form_submit_button("➕ ADICIONAR"):
+            try:
+                q, p = float(q_t.replace(',','.')), float(p_t.replace(',','.'))
+                st.session_state.carrinho.append({"n": prod if prod else "Item", "v": q*p, "d": f"{q}x R${p:.2f}"})
+                st.rerun()
+            except: st.error("Erro nos números!")
 
-    if enviar:
-        try:
-            q = float(qtd_txt.replace(',', '.'))
-            p = float(prc_txt.replace(',', '.'))
-            st.session_state.carrinho.append({"nome": produto, "valor": q * p})
-            st.success("Adicionado!")
-        except:
-            st.error("Erro nos números!")
-
-    # TOTAL (ESTÁ FORA DO FORMULÁRIO!)
-    st.write("---")
-    total = sum(item['valor'] for item in st.session_state.carrinho)
+    # LÓGICA DO SEMÁFORO
+    total = sum(i['v'] for i in st.session_state.carrinho)
+    prog = min(total/orcamento, 1.0) if orcamento > 0 else 0
     
-    st.markdown(f"""<div class="metric-container">
-        <p style="margin:0; color:#4A148C;">TOTAL ACUMULADO</p>
-        <h1 style="margin:0; color:#7B1FA2;">R$ {total:.2f}</h1>
-    </div>""", unsafe_allow_html=True)
+    if prog < 0.7: cor, msg = "#2E7D32", "✅ DENTRO DA META"
+    elif prog < 1.0: cor, msg = "#FBC02D", "⚠️ QUASE NO LIMITE"
+    else: cor, msg = "#D32F2F", "🚨 LIMITE ULTRAPASSADO!"
 
+    # PAINEL DE STATUS
+    st.markdown(f"""
+        <div style='background-color:{cor}; padding:20px; border-radius:15px; text-align:center; color:white;'>
+            <p style='margin:0;'>{msg}</p>
+            <h1 style='margin:0;'>R$ {total:.2f}</h1>
+            <small>Sua meta: R$ {orcamento:.2f}</small>
+        </div>
+    """, unsafe_allow_html=True)
+    st.progress(prog)
+
+    # LISTA DE ITENS
     if st.session_state.carrinho:
-        # WHATSAPP
-        texto = f"🛒 *Resumo SupSmart Pro*\n\n"
+        st.write("### 📝 Itens na Lista")
         for i in st.session_state.carrinho:
-            texto += f"• {i['nome']}: R$ {i['valor']:.2f}\n"
-        texto += f"\n💰 *TOTAL: R$ {total:.2f}*"
+            st.markdown(f"<div class='item-card'><b>{i['n']}</b><br>{i['d']} = <b>R$ {i['v']:.2f}</b></div>", unsafe_allow_html=True)
         
+        # WHATSAPP
+        texto = f"🛒 *Resumo SupSmart Pro*\nTotal: R$ {total:.2f}\nMeta: R$ {orcamento:.2f}"
         link = f"https://wa.me/?text={urllib.parse.quote(texto)}"
+        st.markdown(f"<a href='{link}' target='_blank' style='text-decoration:none;'><div style='background-color:#25D366; color:white; padding:15px; border-radius:10px; text-align:center; font-weight:bold;'>ENVIAR WHATSAPP ✅</div></a>", unsafe_allow_html=True)
         
-        st.write("")
-        st.markdown(f"""<a href="{link}" target="_blank" style="text-decoration:none;">
-            <div style="background-color:#25D366; color:white; padding:15px; border-radius:10px; text-align:center; font-weight:bold;">
-                ENVIAR PARA WHATSAPP ✅
-            </div>
-        </a>""", unsafe_allow_html=True)
-        
-        if st.button("🗑️ Limpar"):
+        if st.sidebar.button("🗑️ Limpar Lista"):
             st.session_state.carrinho = []
             st.rerun()
