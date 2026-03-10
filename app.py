@@ -5,7 +5,7 @@ import time
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SupSmart Pro", page_icon="logo.png", layout="centered")
 
-# Inicialização de memória do app
+# Inicialização de memória
 if 'pagina' not in st.session_state:
     st.session_state.pagina = 'home'
 if 'carrinho' not in st.session_state:
@@ -15,12 +15,11 @@ def mudar_pagina(nome):
     st.session_state.pagina = nome
     st.rerun()
 
-# --- 2. ESTILO CSS (O DESIGN LISO) ---
+# --- 2. ESTILO CSS ---
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 10px; height: 3.5em; background-color: #7B1FA2; color: white; font-weight: bold; }
     .item-card { background-color: white; padding: 12px; border-radius: 10px; border-left: 6px solid #7B1FA2; margin-bottom: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); color: black; }
-    .finalizar-btn>div>button { background-color: #2E7D32 !important; border: none; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -33,26 +32,26 @@ if st.session_state.pagina == 'home':
     with c1:
         if st.button("🚀 MODO VISITANTE"): mudar_pagina('calculadora')
     with c2:
-        if st.button("🌐 CONECTAR GOOGLE"): st.toast("Em breve: Nuvem!")
-    st.caption("<p style='text-align:center;'>Desenvolvido por Douglas | Versão 3.0 Elite</p>", unsafe_allow_html=True)
+        if st.button("🌐 CONECTAR GOOGLE"): st.toast("Em breve: Sincronização!")
+    st.caption("<p style='text-align:center;'>Versão 3.0 Elite | Douglas Dev</p>", unsafe_allow_html=True)
 
-# --- TELA 2: CALCULADORA (O MONSTRO) ---
+# --- TELA 2: CALCULADORA ---
 elif st.session_state.pagina == 'calculadora':
-    if st.sidebar.button("⬅️ Sair do App"): mudar_pagina('home')
+    if st.sidebar.button("⬅️ Sair"): mudar_pagina('home')
     
     st.title("🛒 Lista de Precisão")
     
-    # DEFINIR META DE GASTO
-    with st.expander("🎯 CONFIGURAR ORÇAMENTO", expanded=True):
-        orcamento = st.number_input("Qual o seu limite hoje? (R$)", min_value=1.0, value=100.0, step=10.0)
+    # 🎯 CONFIGURAÇÃO DE ORÇAMENTO
+    with st.expander("🎯 DEFINIR META DE GASTO", expanded=True):
+        orcamento = st.number_input("Qual o limite de hoje? (R$)", min_value=1.0, value=100.0, step=10.0)
 
-    # FORMULÁRIO DE ENTRADA
+    # 📦 FORMULÁRIO DE ENTRADA
     with st.form("add_item", clear_on_submit=True):
-        produto = st.text_input("📦 Nome do Produto (Ex: Arroz)")
+        produto = st.text_input("📦 Nome do Produto")
         col1, col2 = st.columns(2)
         with col1: qtd_txt = st.text_input("Qtd/Peso", value="1")
         with col2: prc_txt = st.text_input("Preço Unitário", placeholder="0,00")
-        enviar = st.form_submit_button("➕ ADICIONAR AO CARRINHO")
+        enviar = st.form_submit_button("➕ ADICIONAR")
 
     if enviar:
         try:
@@ -64,18 +63,40 @@ elif st.session_state.pagina == 'calculadora':
                 "detalhe": f"{q}x R$ {p:.2f}"
             })
             st.rerun()
-        except: st.error("⚠️ Por favor, use apenas números e vírgula.")
+        except: st.error("⚠️ Use apenas números e vírgula.")
 
-    # CÁLCULOS E SEMÁFORO DE CORES
+    # 📊 CÁLCULOS E SEMÁFORO
     total = sum(item['valor'] for item in st.session_state.carrinho)
     progresso = min(total / orcamento, 1.0) if orcamento > 0 else 0
     
-    if progresso < 0.7: 
-        cor, msg = "#2E7D32", "✅ DENTRO DA META"
-    elif progresso < 1.0: 
-        cor, msg = "#FBC02D", "⚠️ ATENÇÃO: QUASE LÁ"
-    else: 
-        cor, msg = "#D32F2F", "🚨 LIMITE ULTRAPASSADO!"
+    if progresso < 0.7: cor, msg = "#2E7D32", "✅ DENTRO DA META"
+    elif progresso < 1.0: cor, msg = "#FBC02D", "⚠️ ATENÇÃO: QUASE LÁ"
+    else: cor, msg = "#D32F2F", "🚨 LIMITE ULTRAPASSADO!"
 
-    # PAINEL DE STATUS DINÂMICO
+    # 🎨 PAINEL DE STATUS
     st.markdown(f"""
+        <div style="background-color: {cor}; padding: 20px; border-radius: 15px; text-align: center; color: white; margin-top: 10px;">
+            <p style="margin:0; font-weight:bold;">{msg}</p>
+            <h1 style="margin:0;">R$ {total:.2f}</h1>
+            <p style="margin:0; opacity: 0.8;">Meta: R$ {orcamento:.2f}</p>
+        </div>
+    """, unsafe_allow_html=True)
+    st.progress(progresso)
+
+    # 📝 LISTA DE ITENS E FERRAMENTAS
+    if st.session_state.carrinho:
+        st.write("### 📝 Itens na Lista:")
+        for i in st.session_state.carrinho:
+            st.markdown(f"""
+                <div class="item-card">
+                    <strong>{i['nome']}</strong><br>
+                    {i['detalhe']} = <strong>R$ {i['valor']:.2f}</strong>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.write("---")
+        
+        # WHATSAPP
+        resumo = f"🛒 *Resumo SupSmart Pro*\n\n"
+        for i in st.session_state.carrinho:
+            resumo += f"
