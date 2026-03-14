@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import urllib.parse  # Para formatar o texto do WhatsApp
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 # --- 1. FUNÇÕES DE APOIO ---
@@ -21,15 +21,48 @@ def get_db_connection():
 
 conn = get_db_connection()
 
-# --- 2. CONFIGURAÇÃO UI ---
+# --- 2. TELA DE INÍCIO (LOGIN / VISITANTE) ---
+if 'logado' not in st.session_state:
+    st.session_state.logado = False
+
+if not st.session_state.logado:
+    st.markdown("<h1 style='text-align: center;'>🛒 SupSmart Pro</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Controle suas compras de forma inteligente</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.write("---")
+        # Botão Visitante
+        if st.button("🚀 Entrar como Visitante", use_container_width=True):
+            st.session_state.logado = True
+            st.rerun()
+        
+        # Simulação Botão Google (Visual)
+        st.markdown('''
+            <div style="background-color: white; color: #757575; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; border: 1px solid #ddd; cursor: not-allowed; opacity: 0.7;">
+                <img src="https://rotulos.com.br/wp-content/uploads/2021/05/google-logo.png" width="18" style="margin-right: 10px; vertical-align: middle;">
+                Fazer login com Google (Em breve)
+            </div>
+        ''', unsafe_allow_html=True)
+        st.caption("Nota: O login com Google requer configuração de API.")
+    st.stop() # Interrompe o código aqui até o usuário entrar
+
+# --- 3. SE O USUÁRIO ESTIVER LOGADO, MOSTRA O APP ---
 st.set_page_config(page_title="SupSmart Pro", layout="wide")
 
 if 'carrinho' not in st.session_state:
     st.session_state.carrinho = []
 
+# Botão de Sair na Sidebar
+with st.sidebar:
+    st.write(f"Conectado como: **Visitante**")
+    if st.button("Sair"):
+        st.session_state.logado = False
+        st.rerun()
+
 st.title("SupSmart / Dashboard")
 
-# --- 3. MÉTRICAS E ORÇAMENTO ---
+# --- 4. MÉTRICAS E ORÇAMENTO ---
 limite_input = st.number_input("Definir Meta de Gasto (R$):", min_value=0.0, value=500.0)
 total_carrinho = sum(i['Total'] for i in st.session_state.carrinho)
 
@@ -39,7 +72,7 @@ c2.metric("Meta", f"R$ {limite_input:.2f}", delta=f"Sobram: R$ {limite_input - t
 
 st.divider()
 
-# --- 4. NAVEGAÇÃO ---
+# --- 5. NAVEGAÇÃO ---
 tab_mercado, tab_historico = st.tabs(["🛒 Comprar", "📜 Histórico"])
 
 with tab_mercado:
@@ -66,19 +99,15 @@ with tab_mercado:
         df_car = pd.DataFrame(st.session_state.carrinho)
         st.dataframe(df_car, use_container_width=True, hide_index=True)
         
-        # --- FUNÇÃO WHATSAPP ---
-        # Monta o texto da mensagem
+        # Link WhatsApp
         texto_wpp = f"🛒 *Lista de Compras - SupSmart*\n\n"
         for i in st.session_state.carrinho:
             texto_wpp += f"▪️ {i['Item']} ({i['Qtd']}{i['Medida']}) - R$ {i['Total']:.2f}\n"
         texto_wpp += f"\n💰 *Total: R$ {total_carrinho:.2f}*"
-        
-        # Codifica para URL
         texto_encoded = urllib.parse.quote(texto_wpp)
         link_wpp = f"https://wa.me/?text={texto_encoded}"
         
         col_btn1, col_btn2 = st.columns(2)
-        
         with col_btn1:
             if st.button("✅ FINALIZAR COMPRA", type="primary", use_container_width=True):
                 cur = conn.cursor()
@@ -95,14 +124,7 @@ with tab_mercado:
                 st.rerun()
 
         with col_btn2:
-            # Botão que redireciona para o WhatsApp
-            st.markdown(f'''
-                <a href="{link_wpp}" target="_blank" style="text-decoration: none;">
-                    <div style="background-color: #25D366; color: white; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold;">
-                        sa Compartilhar no WhatsApp
-                    </div>
-                </a>
-            ''', unsafe_allow_html=True)
+            st.markdown(f'''<a href="{link_wpp}" target="_blank" style="text-decoration: none;"><div style="background-color: #25D366; color: white; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold;">WhatsApp</div></a>''', unsafe_allow_html=True)
 
 with tab_historico:
     df_compras = pd.read_sql("SELECT * FROM compras ORDER BY id DESC", conn)
