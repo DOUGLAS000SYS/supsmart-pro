@@ -5,156 +5,135 @@ import sqlite3
 from datetime import datetime
 import urllib.parse
 
-# --- 1. BANCO DE DADOS ---
-class DBManager:
-    def __init__(self, db_name='supsmart_pro.db'):
-        self.conn = sqlite3.connect(db_name, check_same_thread=False)
-        self.create_tables()
+# --- 1. BANCO DE DADOS (PERSISTÊNCIA REAL) ---
+def init_db():
+    conn = sqlite3.connect('supsmart_pro.db', check_same_thread=False)
+    c = conn.cursor()
+    # Tabela de Resumo das Compras
+    c.execute('''CREATE TABLE IF NOT EXISTS compras 
+                 (id INTEGER PRIMARY KEY, data TEXT, total REAL, itens_qtd INTEGER)''')
+    # Tabela de Detalhes (Itens de cada compra)
+    c.execute('''CREATE TABLE IF NOT EXISTS itens_detalhes 
+                 (compra_id INTEGER, nome TEXT, preco REAL, qtd REAL, cat TEXT)''')
+    conn.commit()
+    return conn
 
-    def create_tables(self):
-        c = self.conn.cursor()
-        c.execute('CREATE TABLE IF NOT EXISTS compras (id INTEGER PRIMARY KEY, data TEXT, total REAL, itens INTEGER)')
-        c.execute('CREATE TABLE IF NOT EXISTS itens_historico (nome TEXT, preco_unit REAL, data TEXT, categoria TEXT)')
-        self.conn.commit()
+conn = init_db()
 
-    def salvar_compra(self, total, itens):
-        c = self.conn.cursor()
-        data = datetime.now().strftime("%d/%m/%Y")
-        c.execute("INSERT INTO compras (data, total, itens) VALUES (?, ?, ?)", (data, total, len(itens)))
-        for item in itens:
-            c.execute("INSERT INTO itens_historico (nome, preco_unit, data, categoria) VALUES (?, ?, ?, ?)",
-                      (item['Item'], item['Preço Unit'], data, item['Categoria']))
-        self.conn.commit()
+# --- 2. UI ADAPTATIVA (SaaS MODERN STYLE) ---
+st.set_page_config(page_title="SupSmart Pro", layout="wide", page_icon="✨")
 
-db = DBManager()
-
-# --- 2. DESIGN SYSTEM (ESTILO LINEAR/NUBANK) ---
-st.set_page_config(page_title="SupSmart", layout="wide", page_icon="✨")
-
+# CSS para resolver o contraste no Modo Dark e Light
 st.markdown("""
 <style>
-    /* Importação de Fonte Moderna */
     @import url('https://rsms.me/inter/inter.css');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #FBFBFC; }
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
-    /* Estilização dos Cards Principais */
+    /* Cards que se adaptam ao tema (Glassmorphism suave) */
     div[data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E5E7EB;
+        background-color: rgba(128, 128, 128, 0.05);
+        border: 1px solid rgba(128, 128, 128, 0.2);
         padding: 20px !important;
         border-radius: 12px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
     
-    /* Botões estilo Linear */
-    .stButton>button {
-        background-color: #111111;
-        color: white;
-        border-radius: 8px;
-        border: none;
-        padding: 0.5rem 1rem;
-        font-weight: 500;
-        transition: all 0.2s ease;
-    }
-    .stButton>button:hover {
-        background-color: #333333;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        color: white;
-    }
-
-    /* Inputs Estilizados */
-    .stTextInput>div>div>input, .stNumberInput>div>div>input {
-        border-radius: 8px !important;
-        border: 1px solid #E5E7EB !important;
-    }
-
-    /* Custom Header */
-    .header-container {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem 0 2rem 0;
-    }
+    /* Ajuste de botões e inputs */
+    .stButton>button { border-radius: 8px; font-weight: 600; }
+    .stTextInput>div>div>input { border-radius: 8px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. LÓGICA DE ESTADO ---
-if 'carrinho' not in st.session_state: st.session_state.carrinho = []
+# --- 3. GESTÃO DE ESTADO ---
+if 'carrinho' not in st.session_state:
+    st.session_state.carrinho = []
 
-# --- 4. INTERFACE PRINCIPAL ---
-st.markdown('<div class="header-container"><div><h1>SupSmart <span style="color:#888; font-weight:400;">/ Dashboard</span></h1></div></div>', unsafe_allow_html=True)
+# --- 4. CABEÇALHO E MÉTRICAS ---
+st.title("SupSmart / Dashboard")
 
-# Métricas de Alta Fidelidade
-df_hist = pd.read_sql("SELECT * FROM compras", db.conn)
-total_atual = sum(item['Total'] for item in st.session_state.carrinho)
-gasto_acumulado = df_hist['total'].sum() if not df_hist.empty else 0.0
+# Carrega dados do banco
+df_compras = pd.read_sql("SELECT * FROM compras", conn)
+total_carrinho = sum(i['Total'] for i in st.session_state.carrinho)
+gasto_historico = df_compras['total'].sum() if not df_compras.empty else 0.0
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Total no Carrinho", f"R$ {total_atual:.2f}")
-m2.metric("Itens", len(st.session_state.carrinho))
-m3.metric("Gasto do Mês", f"R$ {gasto_acumulado:.2f}")
-m4.metric("Previsão", f"R$ {gasto_acumulado * 1.1:.2f}", delta="-2%")
+m1.metric("No Carrinho", f"R$ {total_carrinho:.2f}")
+m2.metric("Itens Atuais", len(st.session_state.carrinho))
+m3.metric("Gasto Total", f"R$ {gasto_historico:.2f}")
+m4.metric("Compras", len(df_compras))
 
 st.write("##")
 
-# Layout de Grid Moderno
-col_left, col_right = st.columns([1.2, 2])
+# --- 5. NAVEGAÇÃO POR ABAS (AQUI ESTÁ O HISTÓRICO) ---
+tab_atual, tab_hist, tab_analise = st.tabs(["🛒 Compra Atual", "📜 Histórico de Listas", "📈 Insights"])
 
-with col_left:
-    with st.container(border=True):
-        st.markdown("### 🛠️ Adicionar Item")
-        nome = st.text_input("Nome do produto", placeholder="Ex: Café em grãos")
-        
-        c1, c2 = st.columns(2)
-        with c1: qtd = st.number_input("Qtd", min_value=0.1, value=1.0)
-        with c2: preco = st.number_input("Preço unitário", min_value=0.0, step=0.01)
-        
-        cat = st.selectbox("Categoria", ["Alimentos", "Higiene", "Limpeza", "Bebidas", "Outros"])
-        
-        if st.button("Adicionar à Lista", use_container_width=True):
-            if nome and preco > 0:
-                st.session_state.carrinho.append({
-                    "Categoria": cat, "Item": nome, "Qtd": qtd, "Preço Unit": preco, "Total": qtd*preco
-                })
-                st.rerun()
-
-with col_right:
-    with st.container(border=True):
-        st.markdown("### 📋 Checkout")
-        if st.session_state.carrinho:
-            df_c = pd.DataFrame(st.session_state.carrinho)
-            st.dataframe(df_c, use_container_width=True, hide_index=True)
+# --- ABA 1: COMPRA ATUAL ---
+with tab_atual:
+    col_in, col_res = st.columns([1, 1.5])
+    
+    with col_in:
+        with st.container(border=True):
+            st.subheader("Adicionar Item")
+            nome = st.text_input("Nome do Produto")
+            c1, c2 = st.columns(2)
+            with c1: qtd = st.number_input("Qtd", min_value=0.1, value=1.0)
+            with c2: preco = st.number_input("Preço Unit.", min_value=0.0, step=0.01)
+            cat = st.selectbox("Categoria", ["Alimentos", "Higiene", "Limpeza", "Bebidas", "Outros"])
             
-            c_fin, c_del = st.columns(2)
-            with c_fin:
-                if st.button("Finalizar Compra", type="primary", use_container_width=True):
-                    db.salvar_compra(total_atual, st.session_state.carrinho)
+            if st.button("Adicionar", use_container_width=True, type="primary"):
+                if nome and preco > 0:
+                    st.session_state.carrinho.append({
+                        "Categoria": cat, "Item": nome, "Qtd": qtd, "Preço Unit": preco, "Total": qtd*preco
+                    })
+                    st.rerun()
+
+    with col_res:
+        with st.container(border=True):
+            st.subheader("Carrinho")
+            if st.session_state.carrinho:
+                df_temp = pd.DataFrame(st.session_state.carrinho)
+                st.dataframe(df_temp, use_container_width=True, hide_index=True)
+                
+                if st.button("✅ FINALIZAR E SALVAR COMPRA", use_container_width=True):
+                    # Salva no Banco de Dados
+                    cur = conn.cursor()
+                    data_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+                    cur.execute("INSERT INTO compras (data, total, itens_qtd) VALUES (?, ?, ?)", 
+                                (data_str, total_carrinho, len(st.session_state.carrinho)))
+                    compra_id = cur.lastrowid
+                    for i in st.session_state.carrinho:
+                        cur.execute("INSERT INTO itens_detalhes VALUES (?, ?, ?, ?, ?)", 
+                                    (compra_id, i['Item'], i['Preço Unit'], i['Qtd'], i['Categoria']))
+                    conn.commit()
+                    
                     st.session_state.carrinho = []
                     st.balloons()
                     st.rerun()
-            with c_del:
-                if st.button("Limpar Carrinho", use_container_width=True):
-                    st.session_state.carrinho = []
-                    st.rerun()
-        else:
-            st.markdown("<div style='text-align:center; padding: 40px; color:#888;'>Nenhum item adicionado ainda.</div>", unsafe_allow_html=True)
+            else:
+                st.info("Adicione itens para começar sua lista.")
 
-# --- 5. ANALYTICS (INSPIRADO NO LINEAR) ---
-st.write("---")
-st.markdown("### 📈 Insights de Consumo")
-ca, cb = st.columns(2)
+# --- ABA 2: HISTÓRICO (OPÇÃO SOLICITADA) ---
+with tab_hist:
+    st.subheader("Histórico de Compras Realizadas")
+    if not df_compras.empty:
+        # Tabela com as compras
+        st.dataframe(df_compras.sort_values(by='id', ascending=False), use_container_width=True, hide_index=True)
+        
+        st.write("---")
+        st.subheader("🔍 Detalhes da Compra")
+        id_busca = st.number_input("Informe o ID da compra para ver os itens:", min_value=1, step=1)
+        if st.button("Ver Itens"):
+            detalhes = pd.read_sql(f"SELECT nome as Item, preco as 'Preço', qtd as 'Qtd', cat as Categoria FROM itens_detalhes WHERE compra_id = {id_busca}", conn)
+            if not detalhes.empty:
+                st.table(detalhes)
+            else:
+                st.warning("Compra não encontrada.")
+    else:
+        st.warning("Você ainda não salvou nenhuma compra.")
 
-with ca:
-    if st.session_state.carrinho:
-        fig = px.bar(df_c, x="Item", y="Total", color="Categoria", 
-                     title="Distribuição de Custos Atual", 
-                     color_discrete_sequence=px.colors.qualitative.Prism)
-        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+# --- ABA 3: ANALYTICS ---
+with tab_analise:
+    if not df_compras.empty:
+        fig = px.area(df_compras, x="data", y="total", title="Evolução de Gastos", markers=True)
         st.plotly_chart(fig, use_container_width=True)
-
-with cb:
-    if not df_hist.empty:
-        fig_line = px.area(df_hist, x="data", y="total", title="Fluxo de Gastos Mensal",
-                           color_discrete_sequence=['#111111'])
-        fig_line.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.info("Dados insuficientes para gerar análises.")
