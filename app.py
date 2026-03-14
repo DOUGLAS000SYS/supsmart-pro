@@ -1,118 +1,170 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import sqlite3
 from datetime import datetime
 
-# --- 1. BANCO DE DADOS (AUTO-REPARO INTEGRADO) ---
-def get_db_connection():
-    conn = sqlite3.connect('supsmart_pro.db', check_same_thread=False)
-    cursor = conn.cursor()
-    # Tabelas base
-    cursor.execute('''CREATE TABLE IF NOT EXISTS compras 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, total REAL, itens_qtd INTEGER, limite REAL)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS itens_detalhes 
-                 (compra_id INTEGER, nome TEXT, preco REAL, qtd REAL, cat TEXT, medida TEXT)''')
-    
-    # Adição automática de colunas faltantes para evitar OperationalError
-    cursor.execute("PRAGMA table_info(compras)")
-    colunas = [row[1] for row in cursor.fetchall()]
-    if 'limite' not in colunas:
-        cursor.execute("ALTER TABLE compras ADD COLUMN limite REAL DEFAULT 0.0")
-    
-    conn.commit()
-    return conn
+# --- 1. CONFIGURAÇÃO E TEMA SaaS ---
+st.set_page_config(page_title="SupSmart Ultra", layout="wide", page_icon="🛒")
 
-conn = get_db_connection()
-
-# --- 2. UX & MELHORIAS VISUAIS (SaaS MODERN) ---
-st.set_page_config(page_title="SupSmart Pro", layout="wide", page_icon="🛒")
-
-# CSS para cards estilo "Glassmorphism" e métricas legíveis
+# CSS para Mobile-First e Glassmorphism
 st.markdown("""
 <style>
-    div[data-testid="stMetric"] {
-        background-color: rgba(128, 128, 128, 0.1) !important;
-        border: 1px solid rgba(128, 128, 128, 0.2) !important;
-        border-radius: 12px !important;
-        padding: 20px !important;
+    @import url('https://rsms.me/inter/inter.css');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    
+    /* Botões Grandes para Mobile */
+    .stButton > button {
+        width: 100%; border-radius: 12px; height: 3rem;
+        font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
     }
-    [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700 !important; }
-    .main { background-color: #0e1117; }
+    
+    /* Dashboard Moderno */
+    div[data-testid="stMetric"] {
+        background: rgba(128, 128, 128, 0.05);
+        border: 1px solid rgba(128, 128, 128, 0.1);
+        border-radius: 16px; padding: 20px;
+    }
+    
+    /* Container Flutuante para Total (Mobile) */
+    .total-fixed {
+        position: fixed; top: 0; left: 0; right: 0; background: #0e1117;
+        z-index: 999; padding: 10px; border-bottom: 1px solid #333;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. INTELIGÊNCIA DE DADOS & ESTADO ---
+# --- 2. MOTOR DE DADOS (SQLite + PANDAS) ---
+def init_db():
+    conn = sqlite3.connect('supsmart_pro.db', check_same_thread=False)
+    conn.execute('''CREATE TABLE IF NOT EXISTS compras 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT, total REAL, itens_qtd INTEGER)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS itens_detalhes 
+                 (compra_id INTEGER, nome TEXT, preco REAL, qtd REAL, cat TEXT)''')
+    conn.commit()
+    return conn
+
+conn = init_db()
+
+# --- 3. INTELIGÊNCIA DE ANÁLISE ---
+def get_insights():
+    df_itens = pd.read_sql("SELECT * FROM itens_detalhes", conn)
+    if df_itens.empty: return None, None
+    
+    # Preço Médio por Item
+    precos_medios = df_itens.groupby('nome')['preco'].mean().to_dict()
+    
+    # Itens Frequentes
+    frequentes = df_itens['nome'].value_counts().head(5).index.tolist()
+    
+    return precos_medios, frequentes
+
+precos_medios, frequentes = get_insights()
+
+# --- 4. GESTÃO DE ESTADO ---
 if 'carrinho' not in st.session_state:
     st.session_state.carrinho = []
 
-st.title("SupSmart / Dashboard")
+# --- 5. DASHBOARD DE TOPO ---
+st.title("SupSmart / Ultra")
 
-# Busca dados para Inteligência de Dados
-df_hist = pd.read_sql("SELECT * FROM compras", conn)
+df_compras = pd.read_sql("SELECT * FROM compras", conn)
 total_carrinho = sum(i['Total'] for i in st.session_state.carrinho)
 
-# Métricas Estilo SaaS
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("🛒 No Carrinho", f"R$ {total_carrinho:.2f}")
-m2.metric("📦 Itens", len(st.session_state.carrinho))
-m3.metric("💰 Total Gasto", f"R$ {df_hist['total'].sum() if not df_hist.empty else 0:.2f}")
+d1, d2, d3 = st.columns(3)
+with d1:
+    st.metric("Total Atual", f"R$ {total_carrinho:.2f}")
+with d2:
+    st.metric("Itens", len(st.session_state.carrinho))
+with d3:
+    media_mensal = df_compras['total'].mean() if not df_compras.empty else 0
+    st.metric("Média Mensal", f"R$ {media_mensal:.2f}")
 
-# Inteligência: Previsão baseada na média (Feature SaaS)
-media = df_hist['total'].mean() if not df_hist.empty else 0
-m4.metric("📈 Previsão Próxima", f"R$ {media * 1.05:.2f}", help="Baseado no seu histórico + 5% de inflação estimada")
-
-# --- 4. NOVAS FUNCIONALIDADES ---
-tab_loja, tab_hist = st.tabs(["🛒 Mercado", "📊 Análise de Gastos"])
-
-with tab_loja:
-    c1, c2 = st.columns([1, 1.5])
-    with c1:
-        with st.form("form_add", clear_on_submit=True):
-            st.subheader("Adicionar Item")
-            nome = st.text_input("Produto")
-            tipo = st.radio("Unidade", ["Un", "Kg"], horizontal=True)
-            col_a, col_b = st.columns(2)
-            qtd = col_a.number_input("Qtd", min_value=0.01, value=1.0)
-            preco = col_b.number_input("Preço", min_value=0.0, step=0.01)
-            cat = st.selectbox("Categoria", ["Alimentos", "Limpeza", "Higiene", "Bebidas", "Outros"])
-            
-            if st.form_submit_button("Adicionar ao Carrinho", use_container_width=True):
-                if nome and preco > 0:
-                    # Alinhamento do dicionário para evitar KeyError
-                    st.session_state.carrinho.append({
-                        "Item": nome, "Qtd": qtd, "Preço": preco, 
-                        "Total": qtd*preco, "Cat": cat, "Medida": tipo
-                    })
-                    st.rerun()
-
-    with c2:
-        if st.session_state.carrinho:
-            st.dataframe(pd.DataFrame(st.session_state.carrinho), use_container_width=True, hide_index=True)
-            if st.button("✅ FINALIZAR COMPRA", type="primary", use_container_width=True):
-                cur = conn.cursor()
-                dt = datetime.now().strftime("%d/%m/%Y %H:%M")
-                cur.execute("INSERT INTO compras (data, total, itens_qtd) VALUES (?, ?, ?)", 
-                            (dt, total_carrinho, len(st.session_state.carrinho)))
-                compra_id = cur.lastrowid
-                for i in st.session_state.carrinho:
-                    cur.execute("INSERT INTO itens_detalhes VALUES (?, ?, ?, ?, ?, ?)", 
-                                (compra_id, i['Item'], i['Preço'], i['Qtd'], i['Cat'], i['Medida']))
-                conn.commit()
-                st.session_state.carrinho = []
-                st.balloons()
+# --- 6. SEÇÃO: ADICIONAR RÁPIDO (MOBILE-FIRST) ---
+with st.expander("⚡ Adicionar Item Rápido", expanded=True):
+    with st.form("quick_add", clear_on_submit=True):
+        c1, c2, c3 = st.columns([2, 1, 1])
+        nome_q = c1.text_input("Produto", placeholder="Arroz")
+        qtd_q = c2.number_input("Qtd", min_value=0.1, value=1.0)
+        preco_q = c3.number_input("R$", min_value=0.0, step=0.01)
+        
+        # Alerta de Preço Médio (Inteligência)
+        if precos_medios and nome_q in precos_medios:
+            media = precos_medios[nome_q]
+            if preco_q > media:
+                diff = ((preco_q / media) - 1) * 100
+                st.warning(f"⚠️ {diff:.0f}% mais caro que a sua média (R$ {media:.2f})")
+        
+        if st.form_submit_button("+ ADICIONAR"):
+            if nome_q and preco_q > 0:
+                st.session_state.carrinho.append({
+                    "Cat": "📦 Outros", "Item": nome_q, "Qtd": qtd_q, 
+                    "Preço": preco_q, "Total": qtd_q * preco_q
+                })
                 st.rerun()
 
-with tab_hist:
-    if not df_hist.empty:
-        st.subheader("Histórico de Compras")
-        st.dataframe(df_hist.sort_values(by='id', ascending=False), use_container_width=True, hide_index=True)
+# --- 7. ITENS FREQUENTES (SUGESTÃO INTELIGENTE) ---
+if frequentes:
+    st.write("### ⭐ Comprados com frequência")
+    cols_f = st.columns(len(frequentes))
+    for i, item in enumerate(frequentes):
+        if cols_f[i].button(item, key=f"freq_{item}"):
+            st.session_state.carrinho.append({
+                "Cat": "📦 Outros", "Item": item, "Qtd": 1.0, 
+                "Preço": precos_medios.get(item, 0.0), "Total": precos_medios.get(item, 0.0)
+            })
+            st.rerun()
+
+# --- 8. ABAS DE NAVEGAÇÃO ---
+tab_lista, tab_analise, tab_hist = st.tabs(["🛒 Lista Atual", "📈 Análise", "📜 Histórico"])
+
+with tab_lista:
+    if st.session_state.carrinho:
+        # Editor de Dados Moderno
+        edited_df = st.data_editor(
+            pd.DataFrame(st.session_state.carrinho),
+            column_config={
+                "Cat": st.column_config.SelectboxColumn("Categoria", options=["🍎 Alimentos", "🧴 Higiene", "🧽 Limpeza", "🥤 Bebidas", "📦 Outros"]),
+                "Total": st.column_config.NumberColumn(format="R$ %.2f")
+            },
+            hide_index=True, use_container_width=True
+        )
         
-        st.divider()
-        id_ver = st.number_input("Detalhes da Compra (ID):", min_value=1, step=1)
-        if st.button("Ver Itens"):
-            detalhes = pd.read_sql(f"SELECT nome, preco, qtd, medida FROM itens_detalhes WHERE compra_id = {int(id_ver)}", conn)
-            if not detalhes.empty:
-                # Correção do erro da imagem image_b5b048: st.table fora de expressões lógicas puras
-                st.table(detalhes)
-            else:
-                st.error("Compra não encontrada.")
+        c_fin, c_sha = st.columns(2)
+        if c_fin.button("💾 FINALIZAR E SALVAR", type="primary"):
+            cur = conn.cursor()
+            dt = datetime.now().strftime("%d/%m/%Y %H:%M")
+            cur.execute("INSERT INTO compras (data, total, itens_qtd) VALUES (?, ?, ?)", (dt, total_carrinho, len(st.session_state.carrinho)))
+            c_id = cur.lastrowid
+            for i in st.session_state.carrinho:
+                cur.execute("INSERT INTO itens_detalhes VALUES (?, ?, ?, ?, ?)", (c_id, i['Item'], i['Preço'], i['Qtd'], i['Cat']))
+            conn.commit()
+            st.session_state.carrinho = []
+            st.balloons()
+            st.rerun()
+        
+        if c_sha.button("📤 COMPARTILHAR"):
+            msg = f"🛒 *Lista SupSmart*\nTotal: R$ {total_carrinho:.2f}\n"
+            for i in st.session_state.carrinho:
+                msg += f"- {i['Item']}: R$ {i['Total']:.2f}\n"
+            st.code(msg) # Simula cópia para área de transferência
+
+with tab_analise:
+    if not df_compras.empty:
+        df_itens_all = pd.read_sql("SELECT * FROM itens_detalhes", conn)
+        
+        c_an1, c_an2 = st.columns(2)
+        
+        with c_an1:
+            st.write("### Gastos por Categoria")
+            fig_cat = px.pie(df_itens_all, values='preco', names='cat', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_cat, use_container_width=True)
+            
+        with c_an2:
+            st.write("### Insight do Especialista")
+            cat_top = df_itens_all.groupby('cat')['preco'].sum().idxmax()
+            percent_top = (df_itens_all.groupby('cat')['preco'].sum().max() / df_itens_all['preco'].sum()) * 100
+            st.info(f"💡 **Foco de Gasto:** A categoria **{cat_top}** representa **{percent_top:.1f}%** das suas despesas.")
+
+with tab_hist:
+    st.dataframe(df_compras.sort_values(by='id', ascending=False), use_container_width=True, hide_index=True)
