@@ -1,22 +1,29 @@
 import streamlit as st
 import psycopg2
 
-# Configuração da página (deve ser a primeira linha de comando Streamlit)
 st.set_page_config(page_title="SupSmart Pro", page_icon="🛒", layout="wide")
 
-# CSS para o fundo profissional
-st.markdown(f"""
+# Design Profissional
+st.markdown("""
     <style>
-    .stApp {{
+    .stApp {
         background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8)), 
-                    url("https://raw.githubusercontent.com/DOUGLAS000SYS/supsmart-pro/main/image_290a27.jpg");
+        url("https://raw.githubusercontent.com/DOUGLAS000SYS/supsmart-pro/main/image_290a27.jpg");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
-    }}
-    h1, p, .stMarkdown {{ color: white !important; }}
+    }
+    h1, p, .stMarkdown { color: white !important; text-align: center; }
+    .stButton>button {
+        background: linear-gradient(90deg, #2ecc71, #27ae60) !important;
+        color: white !important;
+        font-weight: bold !important;
+        border: none !important;
+    }
     </style>
 """, unsafe_allow_html=True)
+
+st.success("🚀 Conectado ao Supabase!")
 
 # Teste de conexão (que você já validou)
 st.success("Conectado ao Supabase!")
