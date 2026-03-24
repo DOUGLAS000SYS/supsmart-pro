@@ -33,12 +33,18 @@ if 'logado' not in st.session_state: st.session_state.logado = False
 if not st.session_state.logado:
     _, col, _ = st.columns([1, 2, 1])
     with col:
-        st.markdown("<br><br><h1 style='text-align: center; color: white;'>SupSmart Pro</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: white;'>Sua lista inteligente e profissional.</p>", unsafe_allow_html=True)
-        if st.button("🚀 COMEÇAR AGORA GRÁTIS"):
-            st.session_state.logado = True
-            st.rerun()
-    st.stop()
+      st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.9)), 
+        url("https://raw.githubusercontent.com/DOUGLAS000SYS/supsmart-pro/dev/image_290a27.jpg");
+        background-size: cover; 
+        background-position: center;
+        background-attachment: fixed;
+    }
+    [data-testid="stHeader"] {background: rgba(0,0,0,0);}
+    </style>
+""", unsafe_allow_html=True)
 
 # 4. DASHBOARD
 st.title("🛒 Dashboard Profissional")
