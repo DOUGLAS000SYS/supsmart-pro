@@ -33,16 +33,16 @@ if 'logado' not in st.session_state: st.session_state.logado = False
 if not st.session_state.logado:
     _, col, _ = st.columns([1, 2, 1])
     with col:
-      st.markdown("""
+     st.markdown("""
     <style>
     .stApp {
-        background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.9)), 
-        url("https://raw.githubusercontent.com/DOUGLAS000SYS/supsmart-pro/dev/image_290a27.jpg");
-        background-size: cover; 
+        background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8)), 
+        url("https://raw.githubusercontent.com/DOUGLAS000SYS/supsmart-pro/main/image_290a27.jpg");
+        background-size: cover;
         background-position: center;
         background-attachment: fixed;
     }
-    [data-testid="stHeader"] {background: rgba(0,0,0,0);}
+    h1, p, .stMarkdown { color: white !important; text-align: center; }
     </style>
 """, unsafe_allow_html=True)
 
